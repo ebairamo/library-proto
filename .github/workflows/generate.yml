@@ -62,5 +62,5 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Auto-generated gRPC code from library-proto"
-            git push origin main
+            git push origin master
           fi
