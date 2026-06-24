@@ -1,0 +1,66 @@
+name: Go gRPC CI & Generate
+
+on:
+  workflow_dispatch: # Позволяет запускать генерацию кнопкой из интерфейса Actions
+
+jobs:
+  test-and-generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout ebairamo Repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PROTO_ACTION_TOKEN }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Clone Proto Contract Repo
+        run: |
+          git clone https://x-access-token:${{ secrets.PROTO_ACTION_TOKEN }}@github.com/ebairamo/library-proto.git proto-repo
+
+      - name: Clean Old Code
+        run: rm -rf gen/go/*
+
+      - name: Generate gRPC code
+        run: |
+          mkdir -p gen/go
+          protoc \
+            --proto_path=proto-repo/api/proto \
+            --go_out=. \
+            --go_opt=module=github.com/ebairamo/ebairamo \
+            --go-grpc_out=. \
+            --go-grpc_opt=module=github.com/ebairamo/ebairamo \
+            proto-repo/api/proto/library/v1/*.proto
+
+      - name: Tidy Go Module
+        run: |
+          go mod tidy || true
+
+      - name: Commit & Push Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add gen/go/ go.mod go.sum || true
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto-generated gRPC code from library-proto"
+            git push origin main
+          fi
