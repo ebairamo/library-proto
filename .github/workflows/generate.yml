@@ -1,17 +1,18 @@
-name: Go gRPC CI & Generate
+name: Generate gRPC and Push
 
 on:
-  workflow_dispatch: # Позволяет запускать генерацию кнопкой из интерфейса Actions
+  push:
+    branches:
+      - master # Запуск при каждом пуше в ветку master
+  workflow_dispatch: # Оставляем кнопку для ручного запуска
 
 jobs:
-  test-and-generate:
+  generate-and-push:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout ebairamo Repo
+      - name: Checkout library-proto
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.PROTO_ACTION_TOKEN }}
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -29,34 +30,31 @@ jobs:
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
           echo "$HOME/go/bin" >> $GITHUB_PATH
 
-      - name: Clone Proto Contract Repo
+      - name: Clone Main App Repo
         run: |
-          git clone https://x-access-token:${{ secrets.PROTO_ACTION_TOKEN }}@github.com/ebairamo/library-proto.git proto-repo
+          git clone https://x-access-token:${{ secrets.PROTO_ACTION_TOKEN }}@github.com/ebairamo/ebairamo.git ebairamo-app
 
       - name: Clean Old Code
-        run: rm -rf gen/go/*
+        run: rm -rf ebairamo-app/gen/go/*
 
       - name: Generate gRPC code
         run: |
-          mkdir -p gen/go
+          mkdir -p ebairamo-app/gen/go
           protoc \
-            --proto_path=proto-repo/api/proto \
-            --go_out=. \
+            --proto_path=api/proto \
+            --go_out=ebairamo-app \
             --go_opt=module=github.com/ebairamo/ebairamo \
-            --go-grpc_out=. \
+            --go-grpc_out=ebairamo-app \
             --go-grpc_opt=module=github.com/ebairamo/ebairamo \
-            proto-repo/api/proto/library/v1/*.proto
+            api/proto/library/v1/*.proto
 
-      - name: Tidy Go Module
+      - name: Commit & Push to ebairamo Repo
         run: |
-          go mod tidy || true
-
-      - name: Commit & Push Changes
-        run: |
+          cd ebairamo-app
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          git add gen/go/ go.mod go.sum || true
+          git add gen/go/
           
           if git diff --staged --quiet; then
             echo "No changes to commit"
